@@ -64,6 +64,65 @@ def basicFeatureExtractorFace(datum):
                 features[(x,y)] = 0
     return features
 
+def horizontal_pass(pixels):
+    breaks = 0
+    nonzero = 0
+    firstLeft = None
+    aboveCenter = 0
+    last_row = None
+
+    i = 0
+    while i < len(pixels):
+        row = pixels[i]
+        last_row = row
+        j = 1
+        while j < len(row):
+            if row[j] != 0:
+                nonzero += 1
+                # 1-based indexing for firstLeft
+                if not firstLeft or j < firstLeft:
+                    firstLeft = j
+                # check if above center
+                if j <= (len(pixels) + 1) / 2:
+                    aboveCenter += 1
+            if row[j] != row[j - 1]:
+                breaks += 1
+            # increment column and row
+            j += 1
+        i += 1
+
+    return breaks, nonzero, firstLeft, aboveCenter, last_row
+
+def vertical_pass(pixels, row):
+    breaks = 0
+    nonzero = 0
+    firstTop = None
+    pastRight = 0
+
+    j = 0
+    while j < len(pixels[0]):
+        col = [p[j] for p in pixels]
+        i = 1
+        while i < len(col):
+
+            if col[j] != 0:
+                nonzero += 1
+                # 1-based indexing for firstTop
+                if not firstTop or i < firstTop:
+                    firstTop = i
+                # check if past right
+                if i <= (len(pixels[0]) + 1) / 2:
+                    pastRight += 1
+            # increment breaks
+            if col[i] != row[i - 1]: 
+                breaks += 1
+
+            i += 1
+        j += 1
+
+    return breaks, nonzero, firstTop, pastRight
+
+
 def enhancedFeatureExtractorDigit(datum):
     """
     Your feature extraction playground.
@@ -73,16 +132,65 @@ def enhancedFeatureExtractorDigit(datum):
 
     ## DESCRIBE YOUR ENHANCED FEATURES HERE...
 
+    1. Break Count Feature (features[n] for n in range(5))
+
+    These features measure the total number of transitions between black and white pixels (called “breaks”) across the image. Digits with more edges or sharp turns (like 2, 3, 5, 8) trigger this feature, helping the classifier distinguish smooth digits from jagged ones.
+
+    2. Aspect Ratio Feature (features[(n+1)10])
+
+    These features encode the ratio between the digit’s width and height. Certain digits tend to be taller (like 1) or wider (like 2 or 8), so using aspect ratio helps capture overall shape structure.
+
+    3. Density Feature Based on Total Non-Zero Pixels (features[-n])
+
+    This feature represents how many pixels in the digit are filled in, reflecting the digit’s total stroke density. Digits with heavier ink coverage (like 8 or 9) activate this feature more strongly than digits with minimal strokes (like 1).
+
+    *4. Upper-Pixel Concentration Feature (features[-(n+1)10])
+
+    This feature measures what proportion of filled pixels appear above the vertical midpoint of the digit. Some digits have distinctive upper-weighted shapes (like 7 or 9), helping differentiate digits based on vertical mass distribution.
+
+    5. Right-Side Pixel Concentration Feature (features[1000–1004])
+
+    This feature measures what proportion of active pixels appear to the right of the vertical center line. Digits that lean or curve to the right (like 3 or 9) activate this signal, improving discrimination of asymmetric shapes.
+
     ##
     """
-    features =  basicFeatureExtractorDigit(datum)
+    features = basicFeatureExtractorDigit(datum)
 
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    pixels = datum.getPixels()
+
+    # horizontal pass
+    h_breaks, h_nonzero, firstLeft, aboveCenter, last_row = horizontal_pass(pixels)
+
+    # vertical pass (needs last_row to preserve original behavior)
+    v_breaks, v_nonzero, firstTop, pastRight = vertical_pass(pixels, last_row)
+
+    breaks = h_breaks + v_breaks
+    nonzero = h_nonzero + v_nonzero
+
+    # aspect ratio
+    width = len(pixels[0]) - (firstLeft * 2)
+    height = len(pixels) - (firstTop * 2)
+    aspectRatio = float(width) / height
+
+    # feature assignments
+    for n in range(5):
+        features[n] = breaks > 175 and 1.0 or 0.0
+
+    for n in range(10):
+        features[(n + 1) * 10] = aspectRatio < 0.69
+
+    for n in range(5):
+        features[-n] = nonzero > 300 and 1.0 or 0.0
+
+    percentAbove = float(aboveCenter) / nonzero
+    for n in range(5):
+        features[-(n + 1) * 10] = percentAbove > 0.35 and 1.0 or 0.0
+
+    percentRight = float(pastRight) / nonzero
+    for n in range(1000, 1005):
+        features[n] = percentRight < 0.27 and 1.0 or 0.0
 
     return features
-
-
 
 def basicFeatureExtractorPacman(state):
     """
