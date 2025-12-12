@@ -231,8 +231,135 @@ def enhancedPacmanFeatures(state, action):
     It should return a counter with { <feature name> : <feature value>, ... }
     """
     features = util.Counter()
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    
+    successor = state.generateSuccessor(0, action)
+
+    pacmanPosition = successor.getPacmanPosition()
+    currentPacmanPosition = state.getPacmanPosition()
+    food = successor.getFood()
+    capsules = successor.getCapsules()
+    ghostStates = successor.getGhostStates()
+
+    activeGhosts = [g for g in ghostStates if g.scaredTimer == 0]
+    scaredGhosts = [g for g in ghostStates if g.scaredTimer > 0]
+    def inv(dist): return 1.0/(1.0 + dist)
+
+
+    #feature1, distance to closest food
+    foodList = food.asList()
+    if foodList:
+        minFood = min([util.manhattanDistance(pacmanPosition, food) for food in foodList])
+        features['closest-food'] = inv(minFood) if foodList else 0
+    
+    #feature2, closest ghost
+    if ghostStates:
+        ghostPosition = [g.getPosition() for g in ghostStates]
+        minDist = min([util.manhattanDistance(pacmanPosition, ghost) for ghost in ghostPosition])
+        features['closest-ghost'] = inv(minDist) 
+    else:
+        features['closest-ghost'] = 0
+
+    #feature3, closest scared ghost
+    if scaredGhosts:
+        scaredPosition = [g.getPosition() for g in scaredGhosts]
+        minScared = min([util.manhattanDistance(pacmanPosition, ghost) for ghost in scaredPosition])
+        features['closest-scared-ghost'] = inv(minScared)
+    else:
+        features['closest-scared-ghost'] = 0
+
+    #feature4, ghost within2 steps
+    if activeGhosts:
+        activePositions = [g.getPosition() for g in activeGhosts]
+        minActive = min([util.manhattanDistance(pacmanPosition, g) for g in activePositions])
+        features['closest-active-ghost'] = inv(minActive) 
+        features['in-danger'] = 1 if minActive <= 2 else 0
+    else:
+        features['closest-active-ghost'] = 0
+        features['in-danger'] = 0
+    
+    #clsoest cap
+    if capsules:
+        minCap = min([util.manhattanDistance(pacmanPosition, c) for c in capsules])
+        features['closest-capsule'] = inv(minCap) if capsules else 0
+
+    #num food remaining
+    features['food-count'] = float(len(foodList))
+
+    #food action
+    if pacmanPosition in successor.getFood().asList():
+        features['eats-food'] = 1
+    else:
+        features['eats-food'] = 0
+
+    #capsule action
+    if pacmanPosition in successor.getCapsules():
+        features['eats-capsule'] = 1
+    else:
+        features['eats-capsule'] = 0
+    
+    #ghost scared time remaining
+    totalTime = sum([g.scaredTimer for g in ghostStates])
+    features['scared-time'] = float(totalTime) / 40 #max scare time
+
+    #num active ghosts nearby <5steps
+    nearbyGhosts = sum([1 for g in activeGhosts if util.manhattanDistance(pacmanPosition, g.getPosition()) <= 5])
+    features['nearby-ghosts'] = min(1.0, nearbyGhosts / 4.0)
+
+    #is action moving towards food
+    if foodList:
+        currentDist = min([util.manhattanDistance(state.getPacmanPosition(), food) for food in foodList])
+        features['moving-to-food'] = 1 if inv(minFood) > inv(currentDist) else 0
+    else:
+        features['moving-to-food'] = 0
+    
+    #actio moving towards ghost?
+    if activeGhosts:
+        currentActive = min([util.manhattanDistance(currentPacmanPosition, g.getPosition()) for g in activeGhosts])
+        features['moving-to-ghost'] = 1 if inv(minActive) > inv(currentActive) else 0
+    else:
+        features['moving-to-ghost'] = 0
+
+    #escaping when close
+    if activeGhosts:
+        currentActive = min(util.manhattanDistance(currentPacmanPosition, g.getPosition()) for g in activeGhosts)
+        features['escaping-ghost'] = 1 if (currentActive < minActive) and (minActive <= 3) else 0
+    else :
+        features['escaping-ghost'] = 0
+
+    #stop action?
+    features['is-stop'] = 1 if action == 'Stop' else 0
+
+    #score change from aciton
+    features['score-change'] = float(successor.getScore() - state.getScore())
+
+    # moving towards capsule when in danger
+    if capsules and activeGhosts:
+        currentCapDist = min([util.manhattanDistance(currentPacmanPosition, c) for c in capsules])
+        features['fleeing-to-capsule'] = 1.0 if (minCap < currentCapDist and minActive <= 5) else 0.0
+    else:
+        features['fleeing-to-capsule'] = 0.0
+
+    # num of food in direction of action
+    dx = pacmanPosition[0] - currentPacmanPosition[0]
+    dy = pacmanPosition[1] - currentPacmanPosition[1]
+    if dx != 0 or dy != 0:
+        foodInDirection = sum([1 for f in foodList 
+                               if (f[0] - currentPacmanPosition[0]) * dx >= 0 and 
+                                  (f[1] - currentPacmanPosition[1]) * dy >= 0])
+        features['food-in-direction'] = float(foodInDirection) / max(len(foodList), 1)
+    else:
+        features['food-in-direction'] = 0.0
+    
+    # dead end? can be dangerous if ghost nearby
+    successorLegalActions = [a for a in successor.getLegalActions() if a != 'Stop']
+    features['dead-end'] = 1.0 if len(successorLegalActions) <= 1 else 0.0
+
+    # staying put too long (for stop agent)
+    features['action-is-west'] = 1.0 if action == 'West' else 0.0
+    features['action-is-east'] = 1.0 if action == 'East' else 0.0
+    features['action-is-north'] = 1.0 if action == 'North' else 0.0
+    features['action-is-south'] = 1.0 if action == 'South' else 0.0
+
     return features
 
 
